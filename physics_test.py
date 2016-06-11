@@ -1,4 +1,5 @@
-from environment import (Protosome, Map, RED, GREEN, BLUE, BLACK, WHITE, normal_direction, collision_reaction_force)
+# from environment import (Protosome, Map, RED, GREEN, BLUE, BLACK, WHITE, normal_direction, collision_reaction_force)
+from environment import *
 import numpy as np
 import pygame
 
@@ -21,14 +22,13 @@ petri_dish = Map(corners=corners, wall_color=RED, size=(SCREEN_WIDTH, SCREEN_HEI
 
 map_centre = np.average(corners, axis=0)
 
-test_creature_1 = Protosome(color=BLUE, vertices=[[-20, -20], [20, -20], [0, 40]], view_surface=None,
-                            hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2], rotation=0.0,
+test_creature_1 = Protosome(color=GREEN, vertices=[[-20, -20], [20, -20], [0, 40]], view_surface=None,
+                            hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2], angle=0, #np.pi,
                             ppm=1, momentum_vector=np.array([0, 0], dtype=float))
 
 test_creature_2 = Protosome(color=BLUE, vertices=[[-20, -20], [20, -20], [0, 40]], view_surface=None,
-                            hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2 - 100], rotation=0.0,
-                            ppm=1, momentum_vector=np.array([0, 5], dtype=float))
-
+                            hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2 + 70], angle=-np.pi/7,
+                            ppm=1, momentum_vector=np.array([0, -3], dtype=float), angular_velocity= 0 )#-np.pi/32)
 
 
 pygame.init()
@@ -52,6 +52,7 @@ while not done:
             done = True
 
     screen.fill(BLACK)
+
     for test_creature in (test_creature_1, test_creature_2):
         test_creature.update_position(TIME_STEP)
         test_creature.draw(screen, center_pos=test_creature.position, direction=test_creature.angle, ppm=1, relative=False)
@@ -59,30 +60,23 @@ while not done:
 
         edges = test_creature.transformed_edges
 
-    # edge_center =[int(val) for val in edges[2][0] + edges[2][1]/2.0]
-    #
-    # pygame.draw.circle(screen, WHITE, edge_center, 5)
-    # edge_normal = normal_direction(edges[2])
-    # # pygame.draw.line(screen, GREEN, edge_center, edge_center + edge_normal, 2)
-
-        pygame.draw.circle(screen, RED, [int(val) for val in test_creature.position], 5)
+        pygame.draw.line(screen, WHITE, test_creature.position, test_creature.position + test_creature.momentum_vector*10, 5)
         x = 0
         for edge in edges:
             x += 1
             # print(x)
             try:
                 edge_center = edge[0] + edge[1]/2
-                edge_normal = normal_direction(edge[1])
-                pygame.draw.circle(screen, WHITE, edge_center.astype(int), 5)
-                pygame.draw.circle(screen, GREEN, edge[0].astype(int), 5)
+                edge_normal = normal_direction(edge[1]) * 12
+                # pygame.draw.circle(screen, WHITE, edge_center.astype(int), 5)
+                # pygame.draw.circle(screen, GREEN, edge[0].astype(int), 5)
                 pygame.draw.line(screen, RED, edge[0], edge[0] + edge[1], 2)
                 pygame.draw.line(screen, GREEN, edge_center, edge_center + edge_normal, 2)
             except Exception as e:
                 print(e)
-                print(edge_normal)
     reaction = collision_reaction_force(test_creature_1, test_creature_2, TIME_STEP)
-    print(reaction)
-    if reaction is not None and not np.isnan(reaction[0][0]).any() and not np.isnan(reaction[1][0]).any():
+    # if reaction is not None and not np.isnan(reaction[0][0]).any() and not np.isnan(reaction[1][0]).any():
+    if reaction is not None:
         test_creature_1_reaction, test_creature_2_reaction = reaction
         test_creature_1.apply_force(test_creature_1_reaction[0], TIME_STEP)
         test_creature_2.apply_force(test_creature_2_reaction[0], TIME_STEP)
@@ -90,16 +84,14 @@ while not done:
         test_creature_1.apply_angular_force(test_creature_1_reaction[1], test_creature_1_reaction[2])
         test_creature_2.apply_angular_force(test_creature_2_reaction[1], test_creature_2_reaction[2])
 
+    for point in get_intersection_points(test_creature_1, test_creature_2):
+        pygame.draw.circle(screen, WHITE, point.astype(int), 5)
+    for point in get_intersection_points(test_creature_2, test_creature_1):
+        pygame.draw.circle(screen, WHITE, point.astype(int), 5)
 
-
-    # for vertex in test_creature.transformed_vertices:
-    #     pygame.draw.circle(screen, WHITE, vertex.astype(int), 5)
-    # theta += d_theta
-    # test_creature.angle = theta
+    pygame.draw.circle(screen, RED, [int(val) for val in [map_x_max / 2, map_y_max / 2]], 5)
 
     pygame.display.flip()
-
-    # done = True
 
     clock.tick(60)
 
