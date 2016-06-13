@@ -23,12 +23,12 @@ petri_dish = Map(corners=corners, wall_color=RED, size=(SCREEN_WIDTH, SCREEN_HEI
 map_centre = np.average(corners, axis=0)
 
 test_creature_1 = Protosome(color=GREEN, vertices=[[-20, -20], [20, -20], [0, 40]], view_surface=None,
-                            hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2], angle=0, #np.pi,
-                            ppm=1, momentum_vector=np.array([0, 0], dtype=float))
+                            hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2], angle=-np.pi/2,
+                            ppm=1, momentum_vector=np.array([0, 0], dtype=float), angular_velocity=-np.pi/32)
 
 test_creature_2 = Protosome(color=BLUE, vertices=[[-20, -20], [20, -20], [0, 40]], view_surface=None,
                             hunger=None, health=100, mass=1, friction=0.3, position=[map_x_max/2, map_y_max/2 + 70], angle=-np.pi/7,
-                            ppm=1, momentum_vector=np.array([0, -3], dtype=float), angular_velocity= 0 )#-np.pi/32)
+                            ppm=1, momentum_vector=np.array([0, -5], dtype=float), angular_velocity=np.pi/32)
 
 
 pygame.init()

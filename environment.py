@@ -167,8 +167,6 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     F_1 = F_1_2 - F_2_1
     F_2 = F_2_1 - F_1_2
 
-    # F_1 *= -1
-
     norm_F_1_2 = np.linalg.norm(F_1)
     norm_F_2_1 = np.linalg.norm(F_2)
 
@@ -186,8 +184,8 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     lin_array_1_2 = np.array([np.sin(np.pi-theta), np.cos(np.pi-theta)], dtype=float)
     lin_array_2_1 = -1 * lin_array_1_2
 
-    linear_F_1_2 = norm_F_1_2 * np.cos(reaction_angle_F_1) * lin_array_1_2
-    linear_F_2_1 = norm_F_2_1 * np.cos(reaction_angle_F_2) * lin_array_2_1
+    # linear_F_1_2 = norm_F_1_2 * np.cos(reaction_angle_F_1) * lin_array_1_2
+    # linear_F_2_1 = norm_F_2_1 * np.cos(reaction_angle_F_2) * lin_array_2_1
 
     ang_F_1_2 = norm_F_1_2 * np.sin(reaction_angle_F_1)
     ang_F_2_1 = norm_F_2_1 * np.sin(reaction_angle_F_2)
@@ -203,6 +201,14 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     unit_inter_section_1 = np.matmul(rot_F_1, (inter_section_1_vector/np.linalg.norm(inter_section_1_vector)))
     unit_inter_section_2 = np.matmul(rot_F_2, (inter_section_2_vector/np.linalg.norm(inter_section_2_vector)))
 
+    if unit_F_1[1] < 0:
+        unit_inter_section_1 = np.matmul(R180, inter_section_1_vector)
+        unit_F_1 = np.matmul(R180, unit_F_1)
+
+    if unit_F_2[1] < 0:
+        unit_inter_section_2 = np.matmul(R180, inter_section_2_vector)
+        unit_F_2 = np.matmul(R180, unit_F_2)
+
     print(unit_F_1, unit_inter_section_1)
     print(unit_F_2, unit_inter_section_2)
 
@@ -212,7 +218,7 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     if 0 < unit_inter_section_2[0]:
         ang_F_2_1 = - ang_F_2_1
 
-    return [linear_F_1_2, ang_F_1_2, r1_2], [linear_F_2_1, ang_F_2_1, r2_1]
+    return [-F_1, ang_F_1_2, r1_2], [-F_2, ang_F_2_1, r2_1]
 
 
 """
