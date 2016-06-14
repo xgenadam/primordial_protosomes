@@ -5,11 +5,11 @@ from math import copysign
 CONSTANTS
 """
 
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GREEN = (0, 255, 0)
-RED = (255, 0, 0)
-BLUE = (0, 0, 255)
+BLACK = np.array([0, 0, 0], dtype=int)
+WHITE = np.array([255, 255, 255], dtype=int)
+GREEN = np.array([0, 255, 0], dtype=int)
+RED = np.array([255, 0, 0], dtype=int)
+BLUE = np.array([0, 0, 255], dtype=int)
 
 R90 = np.array([[np.cos(np.pi/2.0), -np.sin(np.pi/2.0)],
                 [np.sin(np.pi/2.0), np.cos(np.pi/2.0)]], dtype=float)
@@ -58,17 +58,20 @@ def normal_direction_AABB(AABB):
 
 
 def is_potential_intersection(physical_object_1, physical_object_2):
-    for edge_1_start, edge_1_end in physical_object_1.edge_bounds:
-        for p2_vertex in physical_object_2.transformed_vertices:
-            if edge_1_start[0] <= p2_vertex[0] <= edge_1_end[0] and edge_1_start[1] <= p2_vertex[1] <= edge_1_end[1]:
-                return True
+    # TODO: sort this out
+    return True
+    # for edge_1_start, edge_1_end in physical_object_1.edge_bounds:
+    #     for p2_vertex in physical_object_2.transformed_vertices:
+    #         if edge_1_start[0] >= p2_vertex[0] >= edge_1_end[0] and edge_1_start[1] >= p2_vertex[1] >= edge_1_end[1]:
+    #             return True
+    #
+    # for edge_1_start, edge_1_end in physical_object_2.edge_bounds:
+    #     for p2_vertex in physical_object_1.transformed_vertices:
+    #         if edge_1_start[0] >= p2_vertex[0] >= edge_1_end[0] and edge_1_start[1] >= p2_vertex[1] >= edge_1_end[1]:
+    #             return True
+    #
+    # return False
 
-    for edge_1_start, edge_1_end in physical_object_2.edge_bounds:
-        for p2_vertex in physical_object_1.transformed_vertices:
-            if edge_1_start[0] <= p2_vertex[0] <= edge_1_end[0] and edge_1_start[1] <= p2_vertex[1] <= edge_1_end[1]:
-                return True
-
-    return False
 
 def get_vector_angle(v1, v2):
     angle = np.arccos(np.dot(v1, v2)/(np.linalg.norm(v1) * np.linalg.norm(v2)))
@@ -209,8 +212,8 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
         unit_inter_section_2 = np.matmul(R180, inter_section_2_vector)
         unit_F_2 = np.matmul(R180, unit_F_2)
 
-    print(unit_F_1, unit_inter_section_1)
-    print(unit_F_2, unit_inter_section_2)
+    # print(unit_F_1, unit_inter_section_1)
+    # print(unit_F_2, unit_inter_section_2)
 
     if 0 < unit_inter_section_1[0]:
         ang_F_1_2 = -ang_F_1_2
@@ -302,14 +305,13 @@ class BasePolygon(object):
             ppm = self.ppm
 
         if relative is True:
-            theta = direction - self.angle
+            theta = direction + self.angle
         else:
             theta = direction
 
         rotation_matrix = generate_rotation_matrix(theta)
 
         relative_vertices = [center_pos - ppm*np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
-        # print(relative_vertices)
         pygame.draw.polygon(surface, self.color, relative_vertices)
 
 
@@ -356,6 +358,16 @@ class Protosome(BasePolygon):
 class Wall(BasePolygon):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.mass = 0
+
+    def apply_angular_force(self, angular_force, radius):
+        pass
+
+    def apply_force(self, force, timestep):
+        pass
+
+    def update_position(self, timestep=None):
+        pass
 
 
 class Map(object):
@@ -364,15 +376,17 @@ class Map(object):
         self.map_centre = np.average(self.corners, axis=0)
         self.wall_thickness = wall_thickness
         self.wall_color = wall_color
-        self.terrain = terrain
+        self.terrain = terrain if terrain is not None else []
         self.background = background
         self.ppm = ppm
-        self.physicals = [self.generate_walls()]
+        self.terrain += [self.generate_walls()]
+        self.physicals = []
         self.rotation = rotation
         self.size = size
         self.timestep = timestep
 
     def draw(self, surface, center_pos, direction=0, relative=True, ppm=None):
+        surface.fill(self.background)
         if ppm is None:
             ppm = self.ppm
         if relative is True:
@@ -384,7 +398,7 @@ class Map(object):
                 terrain.draw(surface, center_pos, theta, relative=relative, ppm=ppm)
         if self.physicals:
             for physical in self.physicals:
-                physical.draw(surface, center_pos=center_pos, direction=theta, relative=relative, ppm=ppm)
+                physical.draw(surface, center_pos=physical.position, direction=theta, relative=relative, ppm=ppm)
 
     def generate_walls(self):
         outer_corners = []
@@ -394,29 +408,35 @@ class Map(object):
         self.corners.append(self.corners[0])
         self.corners.append(outer_corners[0])
         self.corners.extend(outer_corners[-1::-1])
-        return Wall(vertices=self.corners, color=self.wall_color)
+        position = (max(map(lambda corner: corner[0], self.corners)), max(map(lambda corner: corner[1], self.corners)))
+        return Wall(vertices=self.corners, color=self.wall_color, position=position)
 
-    def add_physical(self, physical):
-        self.physicals.append(physical)
+    def add_physical(self, *physicals):
+        for physical in physicals:
+            self.physicals.append(physical)
 
     @property
     def potential_collisions(self):
         collision_list = []
-        for physical_1 in self.physicals:
-            for physical_2 in self.physicals:
+        for index, physical_1 in enumerate(self.physicals):
+            for physical_2 in self.physicals[index:]:
                 if physical_1 is not physical_2:
                     if is_potential_intersection(physical_1, physical_2):
                         collision_list.append([physical_1, physical_2])
-
         return collision_list
 
-    def update_world(self):
+    def update_world(self, timestep=None):
+        if timestep is None:
+            timestep = self.timestep
         for physical_1, physical_2 in self.potential_collisions:
-            reaction = collision_reaction_force(physical_1, physical_2)
+            reaction = collision_reaction_force(physical_1, physical_2, timestep)
             if reaction is None:
                 continue
             else:
                 physical_1_reaction, physical_2_reaction = reaction
 
-            physical_1.apply_reaction(*physical_1_reaction, timestep=self.timestep)
-            physical_2.apply_reaction(*physical_2_reaction, timestep=self.timestep)
+            physical_1.apply_reaction(*physical_1_reaction, timestep=timestep)
+            physical_2.apply_reaction(*physical_2_reaction, timestep=timestep)
+
+        for physical in self.physicals:
+            physical.update_position(timestep)
