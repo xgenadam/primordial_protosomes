@@ -59,18 +59,20 @@ def normal_direction_AABB(AABB):
 
 def is_potential_intersection(physical_object_1, physical_object_2):
     # TODO: sort this out
-    return True
-    # for edge_1_start, edge_1_end in physical_object_1.edge_bounds:
-    #     for p2_vertex in physical_object_2.transformed_vertices:
-    #         if edge_1_start[0] >= p2_vertex[0] >= edge_1_end[0] and edge_1_start[1] >= p2_vertex[1] >= edge_1_end[1]:
-    #             return True
-    #
-    # for edge_1_start, edge_1_end in physical_object_2.edge_bounds:
-    #     for p2_vertex in physical_object_1.transformed_vertices:
-    #         if edge_1_start[0] >= p2_vertex[0] >= edge_1_end[0] and edge_1_start[1] >= p2_vertex[1] >= edge_1_end[1]:
-    #             return True
-    #
-    # return False
+    diff = 5
+    for edge_1_start, edge_1_end in physical_object_1.edge_bounds:
+        for p2_vertex in physical_object_2.transformed_vertices:
+            if edge_1_start[0] + diff >= p2_vertex[0] >= edge_1_end[0] - diff or edge_1_start[0] - diff <= p2_vertex[0] <= edge_1_end[0] + diff:
+                if edge_1_start[1] + diff >= p2_vertex[1] >= edge_1_end[1] - diff or edge_1_start[1] - diff <= p2_vertex[1] <= edge_1_end[1] + diff:
+                    return True
+
+    for edge_2_start, edge_2_end in physical_object_2.edge_bounds:
+        for p1_vertex in physical_object_1.transformed_vertices:
+            if edge_2_start[0] + diff >= p1_vertex[0] >= edge_2_end[0] - diff or edge_2_start[0] - diff <= p1_vertex[0] <= edge_2_end[0] + diff:
+                if edge_2_start[1] + diff >= p1_vertex[1] >= edge_2_end[1] - diff or edge_2_start[1] - diff <= p1_vertex[1] <= edge_2_end[1] + diff:
+                    return True
+
+    return False
 
 
 def get_vector_angle(v1, v2):
@@ -154,8 +156,14 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     intersection_center = np.average(intersection_points, axis=0)
     inter_section_1_vector = intersection_center - physical_object_1.position
     inter_section_2_vector = intersection_center - physical_object_2.position
-    theta_1_intersection = np.arctan(inter_section_1_vector[0]/inter_section_1_vector[1]) + np.pi/2
-    theta_2_intersection = np.arctan(inter_section_2_vector[0]/inter_section_2_vector[1]) + np.pi/2
+
+    # TODO: double check
+    if inter_section_1_vector[1] != 0 or inter_section_2_vector[1] != 0:
+        theta_1_intersection = np.arctan(inter_section_1_vector[0]/inter_section_1_vector[1]) + np.pi/2
+        theta_2_intersection = np.arctan(inter_section_2_vector[0]/inter_section_2_vector[1]) + np.pi/2
+    else:
+        theta_1_intersection = 0.0
+        theta_2_intersection = 0.0
 
     r1_2 = np.linalg.norm(inter_section_1_vector)
     r2_1 = np.linalg.norm(inter_section_2_vector)
@@ -187,8 +195,8 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     lin_array_1_2 = np.array([np.sin(np.pi-theta), np.cos(np.pi-theta)], dtype=float)
     lin_array_2_1 = -1 * lin_array_1_2
 
-    # linear_F_1_2 = norm_F_1_2 * np.cos(reaction_angle_F_1) * lin_array_1_2
-    # linear_F_2_1 = norm_F_2_1 * np.cos(reaction_angle_F_2) * lin_array_2_1
+    linear_F_1_2 = norm_F_1_2 * np.cos(reaction_angle_F_1) * lin_array_1_2
+    linear_F_2_1 = norm_F_2_1 * np.cos(reaction_angle_F_2) * lin_array_2_1
 
     ang_F_1_2 = norm_F_1_2 * np.sin(reaction_angle_F_1)
     ang_F_2_1 = norm_F_2_1 * np.sin(reaction_angle_F_2)
@@ -206,11 +214,11 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
 
     if unit_F_1[1] < 0:
         unit_inter_section_1 = np.matmul(R180, inter_section_1_vector)
-        unit_F_1 = np.matmul(R180, unit_F_1)
+        # unit_F_1 = np.matmul(R180, unit_F_1)
 
     if unit_F_2[1] < 0:
         unit_inter_section_2 = np.matmul(R180, inter_section_2_vector)
-        unit_F_2 = np.matmul(R180, unit_F_2)
+        # unit_F_2 = np.matmul(R180, unit_F_2)
 
     # print(unit_F_1, unit_inter_section_1)
     # print(unit_F_2, unit_inter_section_2)
@@ -221,7 +229,7 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
     if 0 < unit_inter_section_2[0]:
         ang_F_2_1 = - ang_F_2_1
 
-    return [-F_1, ang_F_1_2, r1_2], [-F_2, ang_F_2_1, r2_1]
+    return [F_2, ang_F_1_2, r1_2], [F_1, ang_F_2_1, r2_1]
 
 
 """
@@ -398,7 +406,10 @@ class Map(object):
                 terrain.draw(surface, center_pos, theta, relative=relative, ppm=ppm)
         if self.physicals:
             for physical in self.physicals:
-                physical.draw(surface, center_pos=physical.position, direction=theta, relative=relative, ppm=ppm)
+                try:
+                    physical.draw(surface, center_pos=physical.position, direction=theta, relative=relative, ppm=ppm)
+                except Exception as e:
+                    print(e)
 
     def generate_walls(self):
         outer_corners = []
@@ -423,6 +434,12 @@ class Map(object):
                 if physical_1 is not physical_2:
                     if is_potential_intersection(physical_1, physical_2):
                         collision_list.append([physical_1, physical_2])
+
+        for terrain in self.terrain:
+            for physical in self.physicals:
+                if is_potential_intersection(terrain, physical):
+                    collision_list.append([physical, terrain])
+
         return collision_list
 
     def update_world(self, timestep=None):
@@ -440,3 +457,4 @@ class Map(object):
 
         for physical in self.physicals:
             physical.update_position(timestep)
+

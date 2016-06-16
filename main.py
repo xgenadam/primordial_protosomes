@@ -22,7 +22,7 @@ petri_dish = Map(corners=corners, wall_color=RED, size=(SCREEN_WIDTH, SCREEN_HEI
 map_centre = np.average(corners, axis=0)
 
 test_creature = Protosome(color=BLUE, vertices=[[-20, -20], [20, -20], [0, 40]], view_surface=None,
-                          hunger=None, health=100, density=1, friction=0.3, position=[map_x_max/2, map_y_max/2], rotation=0.0,
+                          hunger=None, health=100, density=1, friction=0.3, position=[map_x_max/2, map_y_max/2], angle=0.0,
                           ppm=1, momentum_vector=np.array([0, 0], dtype=float))
 
 
