@@ -1,6 +1,8 @@
 import pygame
 import numpy as np
 from math import copysign
+from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody)
+
 """
 CONSTANTS
 """
@@ -30,7 +32,7 @@ TOTAL_REFLECTION = np.array([[-1, 0],
                               [0, -1]], dtype=float)
 
 
-"""
+"""linear_F_2_1
 FUNCTIONS
 """
 
@@ -231,6 +233,9 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
 
     return [F_2, ang_F_1_2, r1_2], [F_1, ang_F_2_1, r2_1]
 
+def surface_zoom(surface_size, vertices):
+    pass
+
 
 """
 CLASSES
@@ -239,9 +244,9 @@ CLASSES
 
 class BasePolygon(object):
     def __init__(self, color, vertices,
-                 world=None, mass=1.0, friction=0.3, position=(0.0, 0.0), angle=0.0, pixels_per_meter=100,
+                 world_map=None, mass=1.0, density=0.050, friction=0.3, position=(0.0, 0.0), angle=0.0, ppm=100,
                  momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, native_timestep=None,
-                 max_momentum=5.0, max_angular_velocity=np.pi/32):
+                 max_momentum=5.0, max_angular_velocity=np.pi/32, dynamic=True):
         self.color = color
         self.vertices = [np.array(vertex, dtype=float) for vertex in vertices]
         self.edges = []
@@ -249,8 +254,11 @@ class BasePolygon(object):
             self.edges.append([vertex, self.vertices[(index+1) % len(self.vertices)] - vertex])
 
         self.momentum_vector = momentum_vector  # x,y, direction
-        self.ppm = pixels_per_meter
-        self.world = world
+        self.ppm = ppm
+        self.world_map = world_map
+        self.world = world_map.world
+        self.body = None
+        self.fixture = None
         self.mass = mass
         self.friction = friction
         self.position = position
@@ -259,6 +267,13 @@ class BasePolygon(object):
         self.native_timestep = native_timestep
         self.max_momentum = max_momentum
         self.max_angular_velocity = max_angular_velocity
+        if world_map is not None:
+            world_map.add_physical(self)
+            if dynamic is True:
+                self.body = self.world.CreateDynamicBody(position=position, angle=angle)
+                self.fixture = self.body.CreatePolygonFixture(vertices=vertices, density=density, friction=friction)
+            else:
+                self.body = world.CreateStaticBody(position=position, angle=angle)
 
     def apply_force(self, force, timestep):
         momentum = self.momentum_vector + (force * timestep)
@@ -305,22 +320,28 @@ class BasePolygon(object):
         absolute_vertices = [self.position - np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
         return absolute_vertices
 
-    def draw(self, surface, center_pos, direction, ppm=None, relative=True):
+    def draw(self, surface, center_pos, direction=None, ppm=None):
         """
         draw this polygon to surface relative to centre position and direction
         """
         if ppm is None:
             ppm = self.ppm
 
-        if relative is True:
-            theta = direction + self.angle
+        surface_size = np.array(surface.get_size(), dtype=float)
+        surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
+
+        offset = (surface_size/2 - center_pos*ppm)
+
+        if direction is None:
+            vertices = [np.matmul(VERTICAL_REFLECTION, (self.body.transform * vertex * ppm) + offset) +
+                        surface_vertical_offset for vertex in self.fixture.shape.vertices]
         else:
-            theta = direction
+            rotation_matrix = generate_rotation_matrix(-direction)
+            vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix,
+                                                                 np.array(self.body.transform * vertex, dtype=float) - center_pos) * ppm + surface_size/2) + surface_vertical_offset
+                        for vertex in self.fixture.shape.vertices]
 
-        rotation_matrix = generate_rotation_matrix(theta)
-
-        relative_vertices = [center_pos - ppm*np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
-        pygame.draw.polygon(surface, self.color, relative_vertices)
+        pygame.draw.polygon(surface, self.color, vertices)
 
 
 class ViewSurface(pygame.Surface):
@@ -339,7 +360,7 @@ class ViewSurface(pygame.Surface):
 
 class Protosome(BasePolygon):
     def __init__(self, color, vertices, view_surface,
-                 hunger=None, health=100, world=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, ppm=100,
+                 hunger=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, ppm=100,
                  momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, native_timestep=None,
                  max_angular_velocity=np.pi/32):
         self.hunger = hunger
@@ -347,12 +368,12 @@ class Protosome(BasePolygon):
         self.view_surface = view_surface
         super().__init__(color=color,
                          vertices=vertices,
-                         world=world,
+                         world_map=world_map,
                          mass=mass,
                          friction=friction,
                          position=position,
                          angle=angle,
-                         pixels_per_meter=ppm,
+                         ppm=ppm,
                          momentum_vector=momentum_vector,
                          angular_velocity=angular_velocity,
                          native_timestep=native_timestep,
@@ -387,27 +408,26 @@ class Map(object):
         self.terrain = terrain if terrain is not None else []
         self.background = background
         self.ppm = ppm
-        self.terrain += [self.generate_walls()]
         self.physicals = []
         self.rotation = rotation
         self.size = size
         self.timestep = timestep
+        self.world = world(gravity=(0, 0), doSleep=True)
+        # self.terrain += [self.generate_walls()]
 
-    def draw(self, surface, center_pos, direction=0, relative=True, ppm=None):
+    def draw(self, surface, center_pos, direction=None, ppm=None):
         surface.fill(self.background)
-        if ppm is None:
-            ppm = self.ppm
-        if relative is True:
-            theta = direction - self.rotation
-        else:
-            theta = direction
+        # if ppm is None:
+        #     ppm = self.ppm
+        if not isinstance(center_pos, np.ndarray):
+            center_pos = np.array(center_pos, dtype=float)
         if self.terrain:
             for terrain in self.terrain:
-                terrain.draw(surface, center_pos, theta, relative=relative, ppm=ppm)
+                terrain.draw(surface, center_pos, direction=direction, ppm=ppm)
         if self.physicals:
             for physical in self.physicals:
                 try:
-                    physical.draw(surface, center_pos=physical.position, direction=theta, relative=relative, ppm=ppm)
+                    physical.draw(surface, center_pos=center_pos, direction=direction, ppm=ppm)
                 except Exception as e:
                     print(e)
 
@@ -420,7 +440,7 @@ class Map(object):
         self.corners.append(outer_corners[0])
         self.corners.extend(outer_corners[-1::-1])
         position = (max(map(lambda corner: corner[0], self.corners)), max(map(lambda corner: corner[1], self.corners)))
-        return Wall(vertices=self.corners, color=self.wall_color, position=position)
+        return Wall(vertices=self.corners, color=self.wall_color, position=position, world=self.world)
 
     def add_physical(self, *physicals):
         for physical in physicals:
@@ -445,16 +465,5 @@ class Map(object):
     def update_world(self, timestep=None):
         if timestep is None:
             timestep = self.timestep
-        for physical_1, physical_2 in self.potential_collisions:
-            reaction = collision_reaction_force(physical_1, physical_2, timestep)
-            if reaction is None:
-                continue
-            else:
-                physical_1_reaction, physical_2_reaction = reaction
-
-            physical_1.apply_reaction(*physical_1_reaction, timestep=timestep)
-            physical_2.apply_reaction(*physical_2_reaction, timestep=timestep)
-
-        for physical in self.physicals:
-            physical.update_position(timestep)
+        self.world.Step(timestep, 10, 10)
 
