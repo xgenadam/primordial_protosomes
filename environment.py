@@ -1,7 +1,7 @@
 import pygame
 import numpy as np
 from math import copysign
-from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody)
+from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody, edgeShape)
 
 """
 CONSTANTS
@@ -233,9 +233,6 @@ def collision_reaction_force(physical_object_1, physical_object_2, timestep):
 
     return [F_2, ang_F_1_2, r1_2], [F_1, ang_F_2_1, r2_1]
 
-def surface_zoom(surface_size, vertices):
-    pass
-
 
 """
 CLASSES
@@ -244,9 +241,9 @@ CLASSES
 
 class BasePolygon(object):
     def __init__(self, color, vertices,
-                 world_map=None, mass=1.0, density=0.050, friction=0.3, position=(0.0, 0.0), angle=0.0, ppm=100,
+                 world_map=None, mass=1.0, density=0.050, friction=0.3, position=(0.0, 0.0), angle=0.0,
                  momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, native_timestep=None,
-                 max_momentum=5.0, max_angular_velocity=np.pi/32, dynamic=True):
+                 dynamic=True):
         self.color = color
         self.vertices = [np.array(vertex, dtype=float) for vertex in vertices]
         self.edges = []
@@ -254,7 +251,6 @@ class BasePolygon(object):
             self.edges.append([vertex, self.vertices[(index+1) % len(self.vertices)] - vertex])
 
         self.momentum_vector = momentum_vector  # x,y, direction
-        self.ppm = ppm
         self.world_map = world_map
         self.world = world_map.world
         self.body = None
@@ -265,8 +261,6 @@ class BasePolygon(object):
         self.angle = angle
         self.angular_velocity = angular_velocity
         self.native_timestep = native_timestep
-        self.max_momentum = max_momentum
-        self.max_angular_velocity = max_angular_velocity
         if world_map is not None:
             world_map.add_physical(self)
             if dynamic is True:
@@ -320,12 +314,10 @@ class BasePolygon(object):
         absolute_vertices = [self.position - np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
         return absolute_vertices
 
-    def draw(self, surface, center_pos, direction=None, ppm=None):
+    def draw(self, surface, center_pos, direction=None, ppm=1):
         """
         draw this polygon to surface relative to centre position and direction
         """
-        if ppm is None:
-            ppm = self.ppm
 
         surface_size = np.array(surface.get_size(), dtype=float)
         surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
@@ -360,9 +352,7 @@ class ViewSurface(pygame.Surface):
 
 class Protosome(BasePolygon):
     def __init__(self, color, vertices, view_surface,
-                 hunger=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, ppm=100,
-                 momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, native_timestep=None,
-                 max_angular_velocity=np.pi/32):
+                 hunger=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, angular_velocity=0.0):
         self.hunger = hunger
         self.health = health
         self.view_surface = view_surface
@@ -373,30 +363,48 @@ class Protosome(BasePolygon):
                          friction=friction,
                          position=position,
                          angle=angle,
-                         ppm=ppm,
-                         momentum_vector=momentum_vector,
-                         angular_velocity=angular_velocity,
-                         native_timestep=native_timestep,
-                         max_angular_velocity=max_angular_velocity)
+                         angular_velocity=angular_velocity,)
 
     def pulse(self):
         # self.body.pulse()
         pass
 
 
-class Wall(BasePolygon):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.mass = 0
+class Wall(object):
+    def __init__(self, vertices, inner_corners, color, position, world):
+        # use box2d edge
+        self.vertices = vertices
+        self.color = color
+        self.position = position
+        self.world = world
+        self.edges = []
+        for index, corner in enumerate(inner_corners):
+            next_corner = inner_corners[(index + 1) % len(inner_corners)]
+            edge = edgeShape(vertices=[corner, next_corner])
+            print(edge)
+            self.edges.append(world.CreateStaticBody(shapes=edge, position=corner))
 
-    def apply_angular_force(self, angular_force, radius):
-        pass
+    def draw(self, surface, center_pos, direction=None, ppm=1):
+        """
+        draw this polygon to surface relative to centre position and direction
+        """
+        # TODO: sort this out!
+        surface_size = np.array(surface.get_size(), dtype=float)
+        surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
 
-    def apply_force(self, force, timestep):
-        pass
+        offset = (surface_size / 2 - center_pos * ppm)
 
-    def update_position(self, timestep=None):
-        pass
+        if direction is None:
+            vertices = [np.matmul(VERTICAL_REFLECTION, (vertex * ppm) + offset) +
+                        surface_vertical_offset for vertex in self.vertices]
+        else:
+            rotation_matrix = generate_rotation_matrix(-direction)
+            vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix,
+                                                                 np.array(vertex,
+                                                                          dtype=float) - center_pos) * ppm + surface_size / 2) + surface_vertical_offset
+                        for vertex in self.vertices]
+
+        pygame.draw.polygon(surface, self.color, vertices)
 
 
 class Map(object):
@@ -413,7 +421,7 @@ class Map(object):
         self.size = size
         self.timestep = timestep
         self.world = world(gravity=(0, 0), doSleep=True)
-        # self.terrain += [self.generate_walls()]
+        self.terrain += [self.generate_walls()]
 
     def draw(self, surface, center_pos, direction=None, ppm=None):
         surface.fill(self.background)
@@ -433,6 +441,7 @@ class Map(object):
 
     def generate_walls(self):
         outer_corners = []
+        inner_corners = self.corners[:]
         for corner in self.corners:
             outer_corner = [corner[0] + np.sign(corner[0]) * self.wall_thickness, corner[1] + np.sign(corner[1]) * self.wall_thickness]
             outer_corners.append(outer_corner)
@@ -440,7 +449,7 @@ class Map(object):
         self.corners.append(outer_corners[0])
         self.corners.extend(outer_corners[-1::-1])
         position = (max(map(lambda corner: corner[0], self.corners)), max(map(lambda corner: corner[1], self.corners)))
-        return Wall(vertices=self.corners, color=self.wall_color, position=position, world=self.world)
+        return Wall(vertices=self.corners, inner_corners=inner_corners, color=self.wall_color, position=position, world=self.world)
 
     def add_physical(self, *physicals):
         for physical in physicals:
