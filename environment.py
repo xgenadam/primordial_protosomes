@@ -322,9 +322,8 @@ class BasePolygon(object):
         surface_size = np.array(surface.get_size(), dtype=float)
         surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
 
-        offset = (surface_size/2 - center_pos*ppm)
-
         if direction is None:
+            offset = (surface_size / 2 - center_pos * ppm)
             vertices = [np.matmul(VERTICAL_REFLECTION, (self.body.transform * vertex * ppm) + offset) +
                         surface_vertical_offset for vertex in self.fixture.shape.vertices]
         else:
@@ -377,12 +376,18 @@ class Wall(object):
         self.color = color
         self.position = position
         self.world = world
-        self.edges = []
+        self.edge_fixtures = []
+        self.edge_bodies = []
         for index, corner in enumerate(inner_corners):
+            print(type(corner))
             next_corner = inner_corners[(index + 1) % len(inner_corners)]
-            edge = edgeShape(vertices=[corner, next_corner])
-            print(edge)
-            self.edges.append(world.CreateStaticBody(shapes=edge, position=corner))
+            position = np.average([corner, next_corner], axis=0)
+            body = edgeShape(vertices=[corner, next_corner])
+
+            self.edge_bodies.append(body)
+            fixture = world.CreateStaticBody(shapes=body, position=corner)
+            # fixture.worldCenter = position
+            self.edge_fixtures.append(fixture)
 
     def draw(self, surface, center_pos, direction=None, ppm=1):
         """
@@ -394,17 +399,32 @@ class Wall(object):
 
         offset = (surface_size / 2 - center_pos * ppm)
 
-        if direction is None:
-            vertices = [np.matmul(VERTICAL_REFLECTION, (vertex * ppm) + offset) +
-                        surface_vertical_offset for vertex in self.vertices]
-        else:
-            rotation_matrix = generate_rotation_matrix(-direction)
-            vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix,
-                                                                 np.array(vertex,
-                                                                          dtype=float) - center_pos) * ppm + surface_size / 2) + surface_vertical_offset
-                        for vertex in self.vertices]
+        # offset = (surface_size / 2 - (center_pos + self.position) * ppm)
+        # pygame.draw.circle(surface, WHITE, [int(x) for x in offset], 5)
+        # print(self.position)
 
-        pygame.draw.polygon(surface, self.color, vertices)
+        # if direction is None:
+        #     vertices = [np.matmul(VERTICAL_REFLECTION, (vertex * ppm) + offset) +
+        #                 surface_vertical_offset for vertex in self.vertices]
+        # else:
+        #     rotation_matrix = generate_rotation_matrix(-direction)
+        #     vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix,
+        #                                                          np.array(vertex,
+        #                                                                   dtype=float) - center_pos) * ppm + surface_size / 2) + surface_vertical_offset
+        #                 for vertex in self.vertices]
+
+        # if direction is not None:
+        #     rotation_matrix = generate_rotation_matrix(-direction)
+        #     relative_vertices = [center_pos - ppm * np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
+        # else:
+        #     relative_vertices = [center_pos - ppm * vertex for vertex in self.vertices]
+        for body, fixture in zip(self.edge_bodies, self.edge_fixtures):
+            surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
+            relative_vertices = [np.matmul(VERTICAL_REFLECTION, (fixture.transform * vertex * ppm) + offset) + surface_vertical_offset for vertex in body.vertices]
+            pygame.draw.lines(surface, RED, False, relative_vertices)
+            # break
+
+        # pygame.draw.polygon(surface, self.color, relative_vertices)
 
 
 class Map(object):
@@ -421,7 +441,8 @@ class Map(object):
         self.size = size
         self.timestep = timestep
         self.world = world(gravity=(0, 0), doSleep=True)
-        self.terrain += [self.generate_walls()]
+        self.walls =self.generate_walls()
+        self.terrain += [self.walls]
 
     def draw(self, surface, center_pos, direction=None, ppm=None):
         surface.fill(self.background)
@@ -448,8 +469,9 @@ class Map(object):
         self.corners.append(self.corners[0])
         self.corners.append(outer_corners[0])
         self.corners.extend(outer_corners[-1::-1])
-        position = (max(map(lambda corner: corner[0], self.corners)), max(map(lambda corner: corner[1], self.corners)))
-        return Wall(vertices=self.corners, inner_corners=inner_corners, color=self.wall_color, position=position, world=self.world)
+        # position = (max(map(lambda corner: corner[0], self.corners)), max(map(lambda corner: corner[1], self.corners)))
+        wall_center = np.average(self.corners, axis=0)
+        return Wall(vertices=self.corners, inner_corners=inner_corners, color=self.wall_color, position=wall_center, world=self.world)
 
     def add_physical(self, *physicals):
         for physical in physicals:
