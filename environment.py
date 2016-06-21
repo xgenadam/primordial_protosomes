@@ -379,10 +379,9 @@ class Wall(object):
         self.edge_fixtures = []
         self.edge_bodies = []
         for index, corner in enumerate(inner_corners):
-            print(type(corner))
             next_corner = inner_corners[(index + 1) % len(inner_corners)]
             position = np.average([corner, next_corner], axis=0)
-            body = edgeShape(vertices=[corner, next_corner])
+            body = edgeShape(vertices=[corner, next_corner*2-corner])
 
             self.edge_bodies.append(body)
             fixture = world.CreateStaticBody(shapes=body, position=corner)
