@@ -398,36 +398,17 @@ class Wall(object):
 
         offset = (surface_size / 2 - center_pos * ppm)
 
-        # offset = (surface_size / 2 - (center_pos + self.position) * ppm)
-        # pygame.draw.circle(surface, WHITE, [int(x) for x in offset], 5)
-        # print(self.position)
-
-        # if direction is None:
-        #     vertices = [np.matmul(VERTICAL_REFLECTION, (vertex * ppm) + offset) +
-        #                 surface_vertical_offset for vertex in self.vertices]
-        # else:
-        #     rotation_matrix = generate_rotation_matrix(-direction)
-        #     vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix,
-        #                                                          np.array(vertex,
-        #                                                                   dtype=float) - center_pos) * ppm + surface_size / 2) + surface_vertical_offset
-        #                 for vertex in self.vertices]
-
-        # if direction is not None:
-        #     rotation_matrix = generate_rotation_matrix(-direction)
-        #     relative_vertices = [center_pos - ppm * np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
-        # else:
-        #     relative_vertices = [center_pos - ppm * vertex for vertex in self.vertices]
         for body, fixture in zip(self.edge_bodies, self.edge_fixtures):
             if direction is None:
                 surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
                 relative_vertices = [np.matmul(VERTICAL_REFLECTION, (body.transform * vertex * ppm) + offset) + surface_vertical_offset for vertex in fixture.vertices]
             else:
                 rotation_matrix = generate_rotation_matrix(-direction)
-                relative_vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix, np.array(body.transform * vertex, dtype=float) - center_pos) * ppm + surface_size / 2) + surface_vertical_offset for vertex in fixture.vertices]
-            pygame.draw.lines(surface, RED, False, relative_vertices)
-            # break
-
-        # pygame.draw.polygon(surface, self.color, relative_vertices)
+                relative_vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix,
+                                                                              np.array(body.transform * vertex,
+                                                                                       dtype=float) - center_pos) *
+                                               ppm + surface_size / 2) + surface_vertical_offset for vertex in fixture.vertices]
+            pygame.draw.lines(surface, self.color, False, relative_vertices)
 
 
 class Map(object):
