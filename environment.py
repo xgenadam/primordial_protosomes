@@ -383,10 +383,10 @@ class Wall(object):
             position = np.average([corner, next_corner], axis=0)
             body = edgeShape(vertices=[corner, next_corner*2-corner])
 
-            self.edge_bodies.append(body)
+            self.edge_fixtures.append(body)
             fixture = world.CreateStaticBody(shapes=body, position=corner)
             # fixture.worldCenter = position
-            self.edge_fixtures.append(fixture)
+            self.edge_bodies.append(fixture)
 
     def draw(self, surface, center_pos, direction=None, ppm=1):
         """
@@ -418,8 +418,12 @@ class Wall(object):
         # else:
         #     relative_vertices = [center_pos - ppm * vertex for vertex in self.vertices]
         for body, fixture in zip(self.edge_bodies, self.edge_fixtures):
-            surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
-            relative_vertices = [np.matmul(VERTICAL_REFLECTION, (fixture.transform * vertex * ppm) + offset) + surface_vertical_offset for vertex in body.vertices]
+            if direction is None:
+                surface_vertical_offset = np.array([0, surface_size[1]], dtype=float)
+                relative_vertices = [np.matmul(VERTICAL_REFLECTION, (body.transform * vertex * ppm) + offset) + surface_vertical_offset for vertex in fixture.vertices]
+            else:
+                rotation_matrix = generate_rotation_matrix(-direction)
+                relative_vertices = [np.matmul(VERTICAL_REFLECTION, np.matmul(rotation_matrix, np.array(body.transform * vertex, dtype=float) - center_pos) * ppm + surface_size / 2) + surface_vertical_offset for vertex in fixture.vertices]
             pygame.draw.lines(surface, RED, False, relative_vertices)
             # break
 
