@@ -444,6 +444,11 @@ class Map(object):
                 except Exception as e:
                     print(e)
 
+    def draw_to_array(self, surface, center_pos, direction=None, ppm=None):
+        self.draw(surface, center_pos, direction, ppm)
+        return pygame.surfarray.array3d(surface)
+
+
     def generate_walls(self):
         outer_corners = []
         inner_corners = self.corners[:]

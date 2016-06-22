@@ -56,6 +56,8 @@ pygame.init()
 size = (map_x_max, map_y_max)
 screen = pygame.display.set_mode(size)
 
+surface_array = pygame.Surface(size)
+
 pygame.display.set_caption("Petri Dish")
 
 done = False
@@ -75,7 +77,8 @@ while not done:
     screen.fill(BLACK)
     screen_center = np.array([(map_x_max/2), (map_y_max/2)], dtype=int)
     center = np.array(test_creature_1.body.position, dtype=int)
-    petri_dish.draw(screen, center, ppm=4, direction=test_creature_1.body.angle)
+    array = petri_dish.draw_to_array(surface_array, center, ppm=4, direction=test_creature_1.body.angle)
+    pygame.surfarray.blit_array(screen, array)
 
     petri_dish.update_world(timestep=TIME_STEP)
 
