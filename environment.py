@@ -269,29 +269,7 @@ class BasePolygon(object):
             else:
                 self.body = world.CreateStaticBody(position=position, angle=angle)
 
-    def apply_force(self, force, timestep):
-        momentum = self.momentum_vector + (force * timestep)
-        abs_momentum = np.linalg.norm(momentum)
-        if abs_momentum > self.max_momentum:
-            momentum *= (self.max_momentum / abs_momentum)
-        self.momentum_vector = momentum
-
-    def apply_angular_force(self, angular_force, radius):
-        angular_velocity = copysign(1, angular_force) * np.sqrt((abs(angular_force) * radius)/self.mass)
-        if abs(angular_velocity) > self.max_angular_velocity:
-            angular_velocity = copysign(self.max_angular_velocity, angular_velocity)
-        self.angular_velocity = angular_velocity
-
-    def apply_reaction(self, linear_force, angular_force, radius, timestep):
-        self.apply_force(linear_force, timestep)
-        self.apply_angular_force(angular_force, radius)
-
-    def update_position(self, timestep=None):
-        if timestep is None:
-            timestep = self.native_timestep
-        self.position += self.momentum_vector/self.mass * timestep
-        self.angle += (self.angular_velocity * timestep) % (2 * np.pi)
-
+    # with box2d integration these properties need sorting
     @property
     def transformed_edges(self):
         rotation_matrix = generate_rotation_matrix(self.angle)
@@ -365,7 +343,6 @@ class Protosome(BasePolygon):
                          angular_velocity=angular_velocity,)
 
     def pulse(self):
-        # self.body.pulse()
         pass
 
 
@@ -430,8 +407,6 @@ class Map(object):
 
     def draw(self, surface, center_pos, direction=None, ppm=None):
         surface.fill(self.background)
-        # if ppm is None:
-        #     ppm = self.ppm
         if not isinstance(center_pos, np.ndarray):
             center_pos = np.array(center_pos, dtype=float)
         if self.terrain:
