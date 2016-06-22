@@ -453,7 +453,6 @@ class Map(object):
         self.corners.append(self.corners[0])
         self.corners.append(outer_corners[0])
         self.corners.extend(outer_corners[-1::-1])
-        # position = (max(map(lambda corner: corner[0], self.corners)), max(map(lambda corner: corner[1], self.corners)))
         wall_center = np.average(self.corners, axis=0)
         return Wall(vertices=self.corners, inner_corners=inner_corners, color=self.wall_color, position=wall_center, world=self.world)
 

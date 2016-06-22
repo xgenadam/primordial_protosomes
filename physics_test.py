@@ -47,8 +47,8 @@ for x in range(500):
     creature = Protosome(color=BLUE + GREEN, vertices=[[-2, -2], [2, -2], [0, 4]], view_surface=None,
                          hunger=None, health=100, mass=1, friction=0.3, position=[random.randint(25, map_x_max-25), random.randint(25, map_y_max-25)],
                          angle=random.random() * 2 * np.pi, angular_velocity=0, world_map=petri_dish)
-    creature.body.linearVelocity[0] += random.randint(-30, 30)
-    creature.body.linearVelocity[1] += random.randint(-30, 30)
+    creature.body.linearVelocity[0] += random.randint(-60, 60)
+    creature.body.linearVelocity[1] += random.randint(-60, 60)
 
 # f = test_creature_5.body.GetWorldVector(localVector=(0.0, -200.0))
 # p = test_creature_5.body.GetWorldPoint(localPoint=(0.0, 2.0))
@@ -80,9 +80,9 @@ while not done:
     screen.fill(BLACK)
     screen_center = np.array([(map_x_max/2), (map_y_max/2)], dtype=int)
     # screen_center = [0, 0]
-    # center = np.array(test_creature_1.body.position, dtype=int)
-    # petri_dish.draw(screen, center, ppm=3, direction=test_creature_1.body.angle)
-    petri_dish.draw(screen, screen_center, ppm=1, direction=None)
+    center = np.array(test_creature_1.body.position, dtype=int)
+    petri_dish.draw(screen, center, ppm=4, direction=test_creature_1.body.angle)
+    # petri_dish.draw(screen, screen_center, ppm=1, direction=None)
 
     petri_dish.update_world(timestep=TIME_STEP)
 
