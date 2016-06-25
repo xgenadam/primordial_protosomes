@@ -137,6 +137,10 @@ class BasePolygon(object):
         self.world.DestroyBody(self.body)
         return self.world_map.physicals.pop(self.uuid)
 
+    @property
+    def collisions(self):
+        return map(lambda contact: contact.other.userData, self.body.contacts)
+
 
 class ViewSurface(pygame.Surface):
     def __init__(self, height, width, *args, **kwargs):
@@ -154,10 +158,12 @@ class ViewSurface(pygame.Surface):
 
 class Protosome(BasePolygon):
     def __init__(self, color, vertices, view_surface,
-                 hunger=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, angular_velocity=0.0):
+                 hunger=None, starvation_factor=None, corpse_type=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, angular_velocity=0.0):
         self.hunger = hunger
+        self.starvation_factor = None
         self.health = health
         self.view_surface = view_surface
+        self.corpse_type = corpse_type
         super().__init__(color=color,
                          vertices=vertices,
                          world_map=world_map,
@@ -168,7 +174,8 @@ class Protosome(BasePolygon):
                          angular_velocity=angular_velocity,)
 
     def pulse(self):
-        pass
+        if self.hunger <= 0 or self.health <= 0:
+            self.destroy()
 
     def destroy(self, replacement=None):
         super().destroy(replacement)
@@ -215,7 +222,8 @@ class Wall(object):
                                                ppm + surface_size / 2) + surface_vertical_offset for vertex in fixture.vertices]
             pygame.draw.lines(surface, self.color, False, relative_vertices)
 
-    def get_collisions(self):
+    @property
+    def collisions(self):
         collisions = []
         for body in self.edge_bodies:
             collisions.extend(map(lambda contact: contact.other.userData, body.contacts))
@@ -287,9 +295,9 @@ class Map(object):
     def collisions(self):
         collision_dict = {}
         for uuid, physical in self.physicals.items():
-            collision_dict[physical.uuid] = map(lambda contact: contact.other.userData, physical.body.contacts)
+            collision_dict[physical.uuid] = physical.collisions
 
-        collision_dict[self.walls.uuid] = self.walls.get_collisions()
+        collision_dict[self.walls.uuid] = self.walls.collisions
 
         return collision_dict
 
