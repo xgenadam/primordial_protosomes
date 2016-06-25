@@ -1,7 +1,6 @@
 import pygame
 import numpy as np
-from math import copysign
-from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody, edgeShape)
+from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody, edgeShape, contact, manifold)
 
 """
 CONSTANTS
@@ -48,190 +47,6 @@ def physical_view(physical_object_1, physical_object_2):
         return True
     else:
         return False
-
-
-def normal_direction(vector):
-    normal = np.matmul(R270, vector) / np.linalg.norm(vector)
-    return normal
-
-
-def normal_direction_AABB(AABB):
-    return normal_direction(AABB[1])
-
-
-def is_potential_intersection(physical_object_1, physical_object_2):
-    # TODO: sort this out
-    diff = 5
-    for edge_1_start, edge_1_end in physical_object_1.edge_bounds:
-        for p2_vertex in physical_object_2.transformed_vertices:
-            if edge_1_start[0] + diff >= p2_vertex[0] >= edge_1_end[0] - diff or edge_1_start[0] - diff <= p2_vertex[0] <= edge_1_end[0] + diff:
-                if edge_1_start[1] + diff >= p2_vertex[1] >= edge_1_end[1] - diff or edge_1_start[1] - diff <= p2_vertex[1] <= edge_1_end[1] + diff:
-                    return True
-
-    for edge_2_start, edge_2_end in physical_object_2.edge_bounds:
-        for p1_vertex in physical_object_1.transformed_vertices:
-            if edge_2_start[0] + diff >= p1_vertex[0] >= edge_2_end[0] - diff or edge_2_start[0] - diff <= p1_vertex[0] <= edge_2_end[0] + diff:
-                if edge_2_start[1] + diff >= p1_vertex[1] >= edge_2_end[1] - diff or edge_2_start[1] - diff <= p1_vertex[1] <= edge_2_end[1] + diff:
-                    return True
-
-    return False
-
-
-def get_vector_angle(v1, v2):
-    angle = np.arccos(np.dot(v1, v2)/(np.linalg.norm(v1) * np.linalg.norm(v2)))
-    return angle
-
-
-def get_intersection_points(physical_object_1, physicalal_object_2):
-    # use aabb verctors to determine intersections points
-    points_of_intersection = []
-    for edge_1 in physical_object_1.transformed_edges:
-        for edge_2 in physicalal_object_2.transformed_edges:
-
-            A_x, A_y = edge_1[0]
-            B_x, B_y = edge_1[1]
-            C_x, C_y = edge_2[0]
-            D_x, D_y = edge_2[1]
-
-            u_denom = (D_y*B_x - D_x*B_y)
-            t_denom = (B_x*D_y - B_y*D_x)
-
-            limit = 0.00001
-
-            if abs(u_denom) < limit or abs(t_denom) < limit:
-                continue
-
-            u = (D_y*C_x + D_x*A_y - D_x*C_y - D_y*A_x)/u_denom
-
-            t = (B_x*A_y + B_y*C_x - B_y*A_x - B_x*C_y)/t_denom
-
-            if 0.0 < u <= 1.0 and 0.0 < t <= 1.0:
-                point_1 = edge_1[0] + u*edge_1[1]
-                point_2 = edge_2[0] + t*edge_2[1]
-
-                point = (point_1 + point_2)/2.0
-
-                points_of_intersection.append(point)
-
-    return points_of_intersection
-
-
-def collision_reaction_direction(physical_object_1, physical_object_2):
-    intersection_points = get_intersection_points(physical_object_1, physical_object_2)
-    if len(intersection_points) == 2:
-        intersection_center = np.average(intersection_points, axis=0)
-        rotation_matrix = generate_rotation_matrix(np.pi/4.0)
-        normal_vector = np.matmul(rotation_matrix, intersection_points[0] - intersection_center)
-        normal_vector = 1/np.sqrt(np.sum(normal_vector**2))
-        return normal_vector
-
-
-def collision_reaction_force(physical_object_1, physical_object_2, timestep):
-    """
-    this is for collision reactions between 2 BasePolygon objects.
-    the physics is a a bit bullshit, but its simple
-    :param physical_object_1:
-    :param physical_object_2:
-    :return: change in momentum and angular velocity for both objects
-    """
-    # conservation of momentum
-    intersection_points = get_intersection_points(physical_object_1, physical_object_2)
-    if not (intersection_points and get_intersection_points(physical_object_2, physical_object_1)):
-        return None
-
-    if len(intersection_points) != 2:
-        return None
-    # if np.linalg.norm(intersection_points[1] - intersection_points[0]) < 0.000001:
-    #     return None
-
-    normal = normal_direction(intersection_points[1] - intersection_points[0])
-    theta = np.arctan(normal[0]/normal[1])
-    mtm_transfer_vector = np.array([np.sin(theta), np.cos(theta)], dtype=float)  # TODO check this
-
-    # first do linear momentum
-    abs_mtm_1_to_2 = np.dot(normal, physical_object_1.momentum_vector)
-    lin_mtm_1_to_2 = abs_mtm_1_to_2 * mtm_transfer_vector
-
-    abs_mtm_2_to_1 = np.dot(-normal, physical_object_2.momentum_vector)
-    lin_mtm_2_to_1 = abs_mtm_2_to_1 * mtm_transfer_vector
-
-    intersection_center = np.average(intersection_points, axis=0)
-    inter_section_1_vector = intersection_center - physical_object_1.position
-    inter_section_2_vector = intersection_center - physical_object_2.position
-
-    # TODO: double check
-    if inter_section_1_vector[1] != 0 or inter_section_2_vector[1] != 0:
-        theta_1_intersection = np.arctan(inter_section_1_vector[0]/inter_section_1_vector[1]) + np.pi/2
-        theta_2_intersection = np.arctan(inter_section_2_vector[0]/inter_section_2_vector[1]) + np.pi/2
-    else:
-        theta_1_intersection = 0.0
-        theta_2_intersection = 0.0
-
-    r1_2 = np.linalg.norm(inter_section_1_vector)
-    r2_1 = np.linalg.norm(inter_section_2_vector)
-
-    # linear velocity from angular velocity at point of intersection
-    amtm_1_2 = r1_2 * physical_object_1.angular_velocity * np.array([np.cos(theta_1_intersection), np.sin(theta_1_intersection)], dtype=float) * physical_object_1.mass/10.0
-    amtm_2_1 = r2_1 * physical_object_2.angular_velocity * np.array([np.cos(theta_2_intersection), np.sin(theta_2_intersection)], dtype=float) * physical_object_2.mass/10.0
-
-    F_1_2 = (lin_mtm_1_to_2 + amtm_1_2)/timestep
-    F_2_1 = (lin_mtm_2_to_1 + amtm_2_1)/timestep
-
-    F_1 = F_1_2 - F_2_1
-    F_2 = F_2_1 - F_1_2
-
-    norm_F_1_2 = np.linalg.norm(F_1)
-    norm_F_2_1 = np.linalg.norm(F_2)
-
-    reaction_angle_F_1 = np.arccos((np.dot(F_1, inter_section_1_vector)/(norm_F_1_2 * r1_2)))
-    reaction_angle_F_2 = np.arccos((np.dot(F_2, inter_section_2_vector)/(norm_F_2_1 * r2_1)))
-
-    # print(np.dot(F_1, inter_section_1_vector)/(np.linalg.norm(F_1) * r1_2), np.dot(F_2, inter_section_2_vector)/(np.linalg.norm(F_2) * r2_1))
-    # print(np.dot(F_1, inter_section_1_vector), np.dot(F_2, inter_section_2_vector))
-    # print(np.dot(F_1, inter_section_1_vector), np.dot(F_2, inter_section_2_vector))
-    # print(norm_F_1_2, norm_F_2_1)
-    # print(F_1, F_2)
-    # print(reaction_angle_F_1, reaction_angle_F_2)
-    # print(inter_section_1_vector, inter_section_2_vector)
-
-    lin_array_1_2 = np.array([np.sin(np.pi-theta), np.cos(np.pi-theta)], dtype=float)
-    lin_array_2_1 = -1 * lin_array_1_2
-
-    linear_F_1_2 = norm_F_1_2 * np.cos(reaction_angle_F_1) * lin_array_1_2
-    linear_F_2_1 = norm_F_2_1 * np.cos(reaction_angle_F_2) * lin_array_2_1
-
-    ang_F_1_2 = norm_F_1_2 * np.sin(reaction_angle_F_1)
-    ang_F_2_1 = norm_F_2_1 * np.sin(reaction_angle_F_2)
-
-    # TODO: this is inneficient way of calculating signs of angular component, should work but come up with something more efficient
-    # this entire thing is hacky but works
-    rot_F_1 = generate_rotation_matrix(get_vector_angle(np.array([0,1], dtype=float), F_1))
-    rot_F_2 = generate_rotation_matrix(get_vector_angle(np.array([0,1], dtype=float), F_2))
-
-    unit_F_1 = np.matmul(rot_F_1, F_1/norm_F_1_2)
-    unit_F_2 = np.matmul(rot_F_2, F_1/norm_F_1_2)
-
-    unit_inter_section_1 = np.matmul(rot_F_1, (inter_section_1_vector/np.linalg.norm(inter_section_1_vector)))
-    unit_inter_section_2 = np.matmul(rot_F_2, (inter_section_2_vector/np.linalg.norm(inter_section_2_vector)))
-
-    if unit_F_1[1] < 0:
-        unit_inter_section_1 = np.matmul(R180, inter_section_1_vector)
-        # unit_F_1 = np.matmul(R180, unit_F_1)
-
-    if unit_F_2[1] < 0:
-        unit_inter_section_2 = np.matmul(R180, inter_section_2_vector)
-        # unit_F_2 = np.matmul(R180, unit_F_2)
-
-    # print(unit_F_1, unit_inter_section_1)
-    # print(unit_F_2, unit_inter_section_2)
-
-    if 0 < unit_inter_section_1[0]:
-        ang_F_1_2 = -ang_F_1_2
-
-    if 0 < unit_inter_section_2[0]:
-        ang_F_2_1 = - ang_F_2_1
-
-    return [F_2, ang_F_1_2, r1_2], [F_1, ang_F_2_1, r2_1]
 
 
 """
@@ -345,6 +160,9 @@ class Protosome(BasePolygon):
     def pulse(self):
         pass
 
+    def kill(self):
+        pass
+
 
 class Wall(object):
     def __init__(self, vertices, inner_corners, color, position, world):
@@ -443,16 +261,7 @@ class Map(object):
     @property
     def potential_collisions(self):
         collision_list = []
-        for index, physical_1 in enumerate(self.physicals):
-            for physical_2 in self.physicals[index:]:
-                if physical_1 is not physical_2:
-                    if is_potential_intersection(physical_1, physical_2):
-                        collision_list.append([physical_1, physical_2])
 
-        for terrain in self.terrain:
-            for physical in self.physicals:
-                if is_potential_intersection(terrain, physical):
-                    collision_list.append([physical, terrain])
 
         return collision_list
 
