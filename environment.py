@@ -1,6 +1,8 @@
 import pygame
 import numpy as np
 from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody, edgeShape, contact, manifold)
+from uuid import uuid1
+from itertools import chain
 
 """
 CONSTANTS
@@ -59,6 +61,7 @@ class BasePolygon(object):
                  world_map=None, mass=1.0, density=0.050, friction=0.3, position=(0.0, 0.0), angle=0.0,
                  momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, native_timestep=None,
                  dynamic=True):
+        self.uuid = uuid1()
         self.color = color
         self.vertices = [np.array(vertex, dtype=float) for vertex in vertices]
         self.edges = []
@@ -77,12 +80,13 @@ class BasePolygon(object):
         self.angular_velocity = angular_velocity
         self.native_timestep = native_timestep
         if world_map is not None:
-            world_map.add_physical(self)
             if dynamic is True:
                 self.body = self.world.CreateDynamicBody(position=position, angle=angle)
                 self.fixture = self.body.CreatePolygonFixture(vertices=vertices, density=density, friction=friction)
             else:
                 self.body = world.CreateStaticBody(position=position, angle=angle)
+            self.body.userData = self
+            world_map.add_physical(self)
 
     # with box2d integration these properties need sorting
     @property
@@ -127,6 +131,12 @@ class BasePolygon(object):
 
         pygame.draw.polygon(surface, self.color, vertices)
 
+    def destroy(self, replacement=None):
+        if replacement is not None:
+            self.world_map.add_physical(replacement(position=self.body.position, angle=self.body.angle))
+        self.world.DestroyBody(self.body)
+        return self.world_map.physicals.pop(self.uuid)
+
 
 class ViewSurface(pygame.Surface):
     def __init__(self, height, width, *args, **kwargs):
@@ -160,13 +170,14 @@ class Protosome(BasePolygon):
     def pulse(self):
         pass
 
-    def kill(self):
-        pass
+    def destroy(self, replacement=None):
+        super().destroy(replacement)
 
 
 class Wall(object):
     def __init__(self, vertices, inner_corners, color, position, world):
         # use box2d edge
+        self.uuid = uuid1()
         self.vertices = vertices
         self.color = color
         self.position = position
@@ -175,13 +186,12 @@ class Wall(object):
         self.edge_bodies = []
         for index, corner in enumerate(inner_corners):
             next_corner = inner_corners[(index + 1) % len(inner_corners)]
-            position = np.average([corner, next_corner], axis=0)
-            body = edgeShape(vertices=[corner, next_corner*2-corner])
+            fixture = edgeShape(vertices=[corner, next_corner*2-corner])
 
-            self.edge_fixtures.append(body)
-            fixture = world.CreateStaticBody(shapes=body, position=corner)
-            # fixture.worldCenter = position
-            self.edge_bodies.append(fixture)
+            self.edge_fixtures.append(fixture)
+            body = world.CreateStaticBody(shapes=fixture, position=corner)
+            body.userData = self
+            self.edge_bodies.append(body)
 
     def draw(self, surface, center_pos, direction=None, ppm=1):
         """
@@ -205,6 +215,15 @@ class Wall(object):
                                                ppm + surface_size / 2) + surface_vertical_offset for vertex in fixture.vertices]
             pygame.draw.lines(surface, self.color, False, relative_vertices)
 
+    def get_collisions(self):
+        collisions = []
+        for body in self.edge_bodies:
+            collisions.extend(map(lambda contact: contact.other.userData, body.contacts))
+        return collisions
+
+    def destroy(self, *args, **kwargs):
+        pass
+
 
 class Map(object):
     def __init__(self, corners, size, ppm, terrain=None, rotation=0.0, wall_thickness=10, wall_color=GREEN, background=BLACK, timestep=None):
@@ -212,26 +231,27 @@ class Map(object):
         self.map_centre = np.average(self.corners, axis=0)
         self.wall_thickness = wall_thickness
         self.wall_color = wall_color
-        self.terrain = terrain if terrain is not None else []
+        self.terrain = {}  # terrain if terrain is not None else []
         self.background = background
         self.ppm = ppm
-        self.physicals = []
+        self.physicals = {}
         self.rotation = rotation
         self.size = size
         self.timestep = timestep
         self.world = world(gravity=(0, 0), doSleep=True)
-        self.walls =self.generate_walls()
-        self.terrain += [self.walls]
+        self.walls = self.generate_walls()
+        self.terrain[self.walls.uuid] = self.walls
+        self.physical_bodies = {}
 
     def draw(self, surface, center_pos, direction=None, ppm=None):
         surface.fill(self.background)
         if not isinstance(center_pos, np.ndarray):
             center_pos = np.array(center_pos, dtype=float)
         if self.terrain:
-            for terrain in self.terrain:
+            for uuid, terrain in self.terrain.items():
                 terrain.draw(surface, center_pos, direction=direction, ppm=ppm)
         if self.physicals:
-            for physical in self.physicals:
+            for uuid, physical in self.physicals.items():
                 try:
                     physical.draw(surface, center_pos=center_pos, direction=direction, ppm=ppm)
                 except Exception as e:
@@ -240,7 +260,6 @@ class Map(object):
     def draw_to_array(self, surface, center_pos, direction=None, ppm=None):
         self.draw(surface, center_pos, direction, ppm)
         return pygame.surfarray.array3d(surface)
-
 
     def generate_walls(self):
         outer_corners = []
@@ -256,14 +275,23 @@ class Map(object):
 
     def add_physical(self, *physicals):
         for physical in physicals:
-            self.physicals.append(physical)
+            self.physicals[physical.uuid] = physical
+
+    def destroy_physicals(self,  physicals, replacement=None):
+        if not physicals:
+            return
+        for physical in physicals:
+            physical.destroy(replacement)
 
     @property
-    def potential_collisions(self):
-        collision_list = []
+    def collisions(self):
+        collision_dict = {}
+        for uuid, physical in self.physicals.items():
+            collision_dict[physical.uuid] = map(lambda contact: contact.other.userData, physical.body.contacts)
 
+        collision_dict[self.walls.uuid] = self.walls.get_collisions()
 
-        return collision_list
+        return collision_dict
 
     def update_world(self, timestep=None):
         if timestep is None:
