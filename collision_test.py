@@ -65,8 +65,6 @@ done = False
 
 # Used to manage how fast the screen updates
 clock = pygame.time.Clock()
-theta = 0.0
-d_theta = np.pi/96
 old_manifold = None
 # -------- Main Program Loop -----------
 while not done:
@@ -91,7 +89,7 @@ while not done:
 
     pygame.display.flip()
 
-    clock.tick(60)
+    clock.tick(TARGET_FPS)
 
 
 pygame.quit()
