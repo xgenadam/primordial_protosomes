@@ -2,7 +2,6 @@ import pygame
 import numpy as np
 from Box2D.b2 import (world, polygonShape, staticBody, dynamicBody, edgeShape, contact, manifold)
 from uuid import uuid1
-from itertools import chain
 
 """
 CONSTANTS
@@ -33,7 +32,7 @@ TOTAL_REFLECTION = np.array([[-1, 0],
                               [0, -1]], dtype=float)
 
 
-"""linear_F_2_1
+"""
 FUNCTIONS
 """
 
@@ -59,8 +58,7 @@ CLASSES
 class BasePolygon(object):
     def __init__(self, color, vertices,
                  world_map=None, mass=1.0, density=0.050, friction=0.3, position=(0.0, 0.0), angle=0.0,
-                 momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, native_timestep=None,
-                 dynamic=True):
+                 momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0, dynamic=True):
         self.uuid = uuid1()
         self.color = color
         self.vertices = [np.array(vertex, dtype=float) for vertex in vertices]
@@ -76,9 +74,6 @@ class BasePolygon(object):
         self.mass = mass
         self.friction = friction
         self.position = position
-        self.angle = angle
-        self.angular_velocity = angular_velocity
-        self.native_timestep = native_timestep
         if world_map is not None:
             if dynamic is True:
                 self.body = self.world.CreateDynamicBody(position=position, angle=angle)
@@ -86,6 +81,8 @@ class BasePolygon(object):
             else:
                 self.body = world.CreateStaticBody(position=position, angle=angle)
             self.body.userData = self
+            self.body.linearVelocity += momentum_vector/mass
+            self.body.angularVelocity += angular_velocity
             world_map.add_physical(self)
 
     # with box2d integration these properties need sorting
@@ -133,7 +130,11 @@ class BasePolygon(object):
 
     def destroy(self, replacement=None):
         if replacement is not None:
-            self.world_map.add_physical(replacement(position=self.body.position, angle=self.body.angle))
+            self.world_map.add_physical(replacement(position=self.body.position,
+                                                    angle=self.body.angle,
+                                                    momentum_vector=self.body.linearVelocity,
+                                                    angular_velocity=self.body.angularVelocity,
+                                                    world_map=self.world_map))
         self.world.DestroyBody(self.body)
         return self.world_map.physicals.pop(self.uuid)
 
@@ -146,7 +147,6 @@ class ViewSurface(pygame.Surface):
     def __init__(self, height, width, *args, **kwargs):
         self.height = height
         self.width = width
-        # self.surface = pygame.Surface((self.width, self.height))
         self.super().__init__((self.height, self.width), *args, **kwargs)
 
     def get_view(self, return_array=True):
@@ -156,11 +156,26 @@ class ViewSurface(pygame.Surface):
         pass
 
 
+class Consumable(BasePolygon):
+    def __init__(self, color, vertices, hunger_restored=0, health_restored=0,
+                 world_map=None, mass=1.0, density=0.050, friction=0.3, position=(0.0, 0.0), angle=0.0,
+                 momentum_vector=np.array([0, 0], dtype=float), angular_velocity=0.0):
+        super().__init__(color, vertices,
+                         world_map=world_map, mass=mass, density=density, friction=friction, position=position, angle=angle,
+                         momentum_vector=momentum_vector, angular_velocity=angular_velocity,
+                         )
+        self.hunger_restored = hunger_restored
+        self.health_restored = health_restored
+
+    def pulse(self):
+        pass
+
+
 class Protosome(BasePolygon):
-    def __init__(self, color, vertices, view_surface,
-                 hunger=None, starvation_factor=None, corpse_type=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, angular_velocity=0.0):
+    def __init__(self, color, vertices, view_surface=None,
+                 hunger=None, starvation_factor=None, corpse_type=None, health=100, world_map=None, mass=1, friction=0.3, position=(0.0, 0.0), angle=0.0, angular_velocity=0.0, **kwargs):
         self.hunger = hunger
-        self.starvation_factor = None
+        self.starvation_factor = starvation_factor
         self.health = health
         self.view_surface = view_surface
         self.corpse_type = corpse_type
@@ -171,11 +186,15 @@ class Protosome(BasePolygon):
                          friction=friction,
                          position=position,
                          angle=angle,
-                         angular_velocity=angular_velocity,)
+                         angular_velocity=angular_velocity,
+                         **kwargs)
 
     def pulse(self):
-        if self.hunger <= 0 or self.health <= 0:
+        if (self.hunger is not None and self.starvation_factor is not None and self.hunger <= 0) or self.health <= 0:
             self.destroy()
+
+        if self.hunger is not None and self.starvation_factor is not None:
+            self.hunger -= self.starvation_factor
 
     def destroy(self, replacement=None):
         super().destroy(replacement)
@@ -255,15 +274,14 @@ class Map(object):
         surface.fill(self.background)
         if not isinstance(center_pos, np.ndarray):
             center_pos = np.array(center_pos, dtype=float)
+
+        if self.physicals:
+            for uuid, physical in self.physicals.items():
+                physical.draw(surface, center_pos=center_pos, direction=direction, ppm=ppm)
+
         if self.terrain:
             for uuid, terrain in self.terrain.items():
                 terrain.draw(surface, center_pos, direction=direction, ppm=ppm)
-        if self.physicals:
-            for uuid, physical in self.physicals.items():
-                try:
-                    physical.draw(surface, center_pos=center_pos, direction=direction, ppm=ppm)
-                except Exception as e:
-                    print(e)
 
     def draw_to_array(self, surface, center_pos, direction=None, ppm=None):
         self.draw(surface, center_pos, direction, ppm)
