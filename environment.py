@@ -12,6 +12,7 @@ WHITE = np.array([255, 255, 255], dtype=int)
 GREEN = np.array([0, 255, 0], dtype=int)
 RED = np.array([255, 0, 0], dtype=int)
 BLUE = np.array([0, 0, 255], dtype=int)
+YELLOW = np.array([255, 255, 0], dtype=int)
 
 R90 = np.array([[np.cos(np.pi/2.0), -np.sin(np.pi/2.0)],
                 [np.sin(np.pi/2.0), np.cos(np.pi/2.0)]], dtype=float)
@@ -83,7 +84,7 @@ class BasePolygon(object):
             self.body.userData = self
             self.body.linearVelocity += momentum_vector/mass
             self.body.angularVelocity += angular_velocity
-            world_map.add_physical(self)
+            self.add_to_world()
 
     # with box2d integration these properties need sorting
     @property
@@ -107,6 +108,9 @@ class BasePolygon(object):
         rotation_matrix = generate_rotation_matrix(self.angle)
         absolute_vertices = [self.position - np.matmul(rotation_matrix, vertex) for vertex in self.vertices]
         return absolute_vertices
+
+    def add_to_world(self):
+        self.world_map.add_physical(self)
 
     def draw(self, surface, center_pos, direction=None, ppm=1):
         """
@@ -285,7 +289,7 @@ class Map(object):
 
     def draw_to_array(self, surface, center_pos, direction=None, ppm=None):
         self.draw(surface, center_pos, direction, ppm)
-        return pygame.surfarray.array3d(surface)
+        return pygame.PixelArray(surface)
 
     def generate_walls(self):
         outer_corners = []
